@@ -1,0 +1,1 @@
+# It's core job is to ping the server to maximize uptime especially on free-tier services like on render

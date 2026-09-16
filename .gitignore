@@ -1,0 +1,6 @@
+# exclude venv
+.venv/
+# editor configs
+.vscode/
+# secret keys
+.env
