@@ -4,3 +4,5 @@
 .vscode/
 # secret keys
 .env
+# ignore compiled python files
+__pycache__/
