@@ -9,7 +9,7 @@ signatures = {
     "ico": b"\x00\x00\x01\x00",
 }
 
-def is_image(image: bytes) -> tuple[str, bool]:
+def is_image(image) -> tuple[str, bool]:
     """
     Verify if the given image bytes match any known image file signature.
 

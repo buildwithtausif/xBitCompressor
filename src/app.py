@@ -1,9 +1,8 @@
 from flask import Flask
-from routes.controller_routes import request_interceptor
+from routes.compress_route import compress_route
 
 server = Flask(__name__)
-
-server.register_blueprint(main_router, url_prefix='/api/v1')
+server.register_blueprint(compress_route, url_prefix='/api/v1')
 
 
 if __name__ == '__main__':
