@@ -1,4 +1,5 @@
-# import pyvips as core
+# import pyvips 
+
 # class ImageService:
 #     @staticmethod
 #     def compress_image(image, filetype: str, ratio: float):
@@ -32,12 +33,12 @@ implement size compression as well were user enters size and image compresses ac
 error in the above code on testing:-
 Image of size 4Mb became of size > 7 Mb after compression with ratio 0.8 and filetype png.
 """
-import pyvips as core
+import pyvips 
 class ImageService:
     @staticmethod
-    def compress_image(image, filetype: str, ratio: float):
+    #ONLY FOR JPEG/JPG COMPRESSION 
+    def compress_image(image, filetype: str, ratio: float = 0.3):
         """
-
         Args:
             image (BytesIO): The image to compress.
             filetype (str): The desired output file type (e.g., "jpeg", "png").
@@ -48,4 +49,98 @@ class ImageService:
         """
 
     # start writing from here
+               
+        data = image.getvalue()
+        image = pyvips.Image.new_from_buffer(data ,"", access = "sequential")
+        
+        print(image.get_fields())
+
+        #removing metadata for quality refining image
+
+        REMOVABLE_METADATA = [
+        "exif-data",
+        "exif-ifd0-DateTime",
+        "exif-ifd0-DateTimeOriginal",
+        "exif-ifd0-DateTimeDigitized",
+        "exif-ifd0-Make",
+        "exif-ifd0-Model",
+        "exif-ifd0-Software",
+        "exif-ifd0-Artist",
+        "exif-ifd0-Copyright",
+        "exif-ifd0-ImageDescription",
+        "exif-ifd0-Orientation",
+        "exif-ifd0-XResolution",
+        "exif-ifd0-YResolution",
+        "exif-ifd0-ResolutionUnit",
+        "exif-ifd0-HostComputer",
+        "exif-ifd2-ExifVersion",
+        "exif-ifd2-ExposureTime",
+        "exif-ifd2-FNumber",
+        "exif-ifd2-ExposureProgram",
+        "exif-ifd2-ISOSpeedRatings",
+        "exif-ifd2-ISOSpeed",
+        "exif-ifd2-RecommendedExposureIndex",
+        "exif-ifd2-ExposureBiasValue",
+        "exif-ifd2-MeteringMode",
+        "exif-ifd2-LightSource",
+        "exif-ifd2-Flash",
+        "exif-ifd2-FocalLength",
+        "exif-ifd2-FocalLengthIn35mmFilm",
+        "exif-ifd2-LensMake",
+        "exif-ifd2-LensModel",
+        "exif-ifd2-LensSerialNumber",
+        "exif-ifd2-CameraOwnerName",
+        "exif-ifd2-BodySerialNumber",
+        "exif-ifd2-SerialNumber",
+        "exif-ifd2-ColorSpace",
+        "exif-ifd2-PixelXDimension",
+        "exif-ifd2-PixelYDimension",
+        "exif-ifd2-FlashpixVersion",
+        "exif-ifd2-SceneCaptureType",
+        "exif-ifd2-WhiteBalance",
+        "exif-ifd2-DigitalZoomRatio",
+        "exif-ifd2-Contrast",
+        "exif-ifd2-Saturation",
+        "exif-ifd2-Sharpness",
+        "exif-ifd3-GPSLatitude",
+        "exif-ifd3-GPSLatitudeRef",
+        "exif-ifd3-GPSLongitude",
+        "exif-ifd3-GPSLongitudeRef",
+        "exif-ifd3-GPSAltitude",
+        "exif-ifd3-GPSAltitudeRef",
+        "exif-ifd3-GPSTimeStamp",
+        "exif-ifd3-GPSDateStamp",
+        "exif-ifd3-GPSSpeed",
+        "exif-ifd3-GPSSpeedRef",
+        "exif-ifd3-GPSDirection",
+        "exif-ifd3-GPSDirectionRef",
+        "exif-ifd3-GPSImgDirection",
+        "exif-ifd3-GPSImgDirectionRef",
+        "exif-ifd3-GPSMapDatum",
+        "exif-ifd3-GPSProcessingMethod",
+        "exif-ifd3-GPSAreaInformation",
+        "xmp-data",
+        "iptc-data",
+        "photoshop-data",
+        "jpeg-thumbnail-data",
+        "thumbnail-data",
+        "image-description",
+        ]
+
+        for fields in REMOVABLE_METADATA:
+            if fields in image.get_fields():
+                image.remove(fields)
+
+        output = image.write_to_buffer(
+        ".jpg",
+        Q=ratio*100,
+        optimize_coding=True,
+        strip=True,
+        subsample_mode="on"
+        )
+        print(image.get_fields())
+
+        return output
+
+
     
