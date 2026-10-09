@@ -7,12 +7,9 @@ class Compress_controller:
     def forward(image, ratio: float | None, filetype: str = "jpeg"):
         # Forward the image to the compression service
         # convert the bytes to a BytesIO object for processing
-        image_stream = BytesIO(image)
-        data = ImageService().compress_image(
-            image_stream,
-            filetype,
-            ratio if ratio is not None else 0.8,
-        )
+        image_stream: BytesIO = BytesIO(image)
+        image_service: ImageService = ImageService(image_stream, filetype, ratio if ratio is not None else 0.8)
+        data: bytes = image_service.compress_by_filetype
         return Response(
             data,
             mimetype=f"image/{filetype}",

@@ -1,17 +1,3 @@
-# import pyvips 
-
-# class ImageService:
-#     @staticmethod
-#     def compress_image(image, filetype: str, ratio: float):
-#         targetImage = core.Image.new_from_buffer(image.getvalue(), "", access="sequential")
-#         return targetImage.write_to_buffer(
-#             f".{filetype}", 
-#             Q=ratio*100, 
-#             interlace=True,
-#             optimize_coding=True,
-#             strip=True
-#         )
-
 """
 NOTE FOR DEVELOPERS:
 for the sake of convention name your class as ImageService and the method as compress_image.
@@ -33,114 +19,74 @@ implement size compression as well were user enters size and image compresses ac
 error in the above code on testing:-
 Image of size 4Mb became of size > 7 Mb after compression with ratio 0.8 and filetype png.
 """
-import pyvips 
+import pyvips as vips
+import re as regex
+
 class ImageService:
-    @staticmethod
-    #ONLY FOR JPEG/JPG COMPRESSION 
-    def compress_image(image, filetype: str, ratio: float = 0.3):
-        """
-        Args:
-            image (BytesIO): The image to compress.
-            filetype (str): The desired output file type (e.g., "jpeg", "png").
-            ratio (float): The compression ratio between 0 and 1.
+    # this approach for removing metadata may not be the best but its good for now, we can improve it later on.
+    image_garbage_metadata: dict[str, str] = {
+        # metadata containers
+        "exifs": r"^exif-.*",
+        "xmp": r"^xmp-.*",
+        "iptc": r"^iptc-.*",
+        "photoshop": r"^photoshop-.*",
+        # embedded previews
+        "jpeg_thumbnail": r"^jpeg-thumbnail-.*",
+        "thumbnail": r"^thumbnail-.*",
+        # descriptions and comments
+        "image_description": r"^image-description.*",
+        "comment":r".*(?:comment|description|caption).*",
+        # software and editing history
+        "software": r".*(?:software|processing-history|history).*"
+    }
+    # this attribute holds the list of supported file types.
+    supported_filetypes: list[str] = ["jpeg", "jpg", "png", "webp"]
 
-        Returns:
-            bytes: The compressed image data.
-        """
+    def __init__(self, image, filetype: str, ratio: float = 0.8):
+        self.image = image
+        self.filetype = filetype
+        self.ratio = ratio
+    # the use case of this attribute is to call the appropriate compression method based on the filetype of the image.
+    @property
+    def compress_by_filetype(self) -> bytes:
+        if self.filetype not in self.supported_filetypes:
+            raise ValueError(f"Unsupported file type: {self.filetype}. Supported file types are: {', '.join(self.supported_filetypes)}")
+        # we've to call internal methods based on the filetype of the image.
+        for filetype in self.supported_filetypes:
+            if self.filetype == filetype:
+                method_name = f"_ImageService__compress_{filetype}"
+                method = getattr(self, method_name, None)
 
-    # start writing from here
-               
-        data = image.getvalue()
-        image = pyvips.Image.new_from_buffer(data ,"", access = "sequential")
-        
-        print(image.get_fields())
+                if filetype in ("jpg", "jpeg"):
+                    return self.__compress_jpeg()
+                
+                if not callable(method):
+                    raise AttributeError(f"Method {method_name} not found in {self.__class__.__name__}")
+                return method()
 
-        #removing metadata for quality refining image
-
-        REMOVABLE_METADATA = [
-        "exif-data",
-        "exif-ifd0-DateTime",
-        "exif-ifd0-DateTimeOriginal",
-        "exif-ifd0-DateTimeDigitized",
-        "exif-ifd0-Make",
-        "exif-ifd0-Model",
-        "exif-ifd0-Software",
-        "exif-ifd0-Artist",
-        "exif-ifd0-Copyright",
-        "exif-ifd0-ImageDescription",
-        "exif-ifd0-Orientation",
-        "exif-ifd0-XResolution",
-        "exif-ifd0-YResolution",
-        "exif-ifd0-ResolutionUnit",
-        "exif-ifd0-HostComputer",
-        "exif-ifd2-ExifVersion",
-        "exif-ifd2-ExposureTime",
-        "exif-ifd2-FNumber",
-        "exif-ifd2-ExposureProgram",
-        "exif-ifd2-ISOSpeedRatings",
-        "exif-ifd2-ISOSpeed",
-        "exif-ifd2-RecommendedExposureIndex",
-        "exif-ifd2-ExposureBiasValue",
-        "exif-ifd2-MeteringMode",
-        "exif-ifd2-LightSource",
-        "exif-ifd2-Flash",
-        "exif-ifd2-FocalLength",
-        "exif-ifd2-FocalLengthIn35mmFilm",
-        "exif-ifd2-LensMake",
-        "exif-ifd2-LensModel",
-        "exif-ifd2-LensSerialNumber",
-        "exif-ifd2-CameraOwnerName",
-        "exif-ifd2-BodySerialNumber",
-        "exif-ifd2-SerialNumber",
-        "exif-ifd2-ColorSpace",
-        "exif-ifd2-PixelXDimension",
-        "exif-ifd2-PixelYDimension",
-        "exif-ifd2-FlashpixVersion",
-        "exif-ifd2-SceneCaptureType",
-        "exif-ifd2-WhiteBalance",
-        "exif-ifd2-DigitalZoomRatio",
-        "exif-ifd2-Contrast",
-        "exif-ifd2-Saturation",
-        "exif-ifd2-Sharpness",
-        "exif-ifd3-GPSLatitude",
-        "exif-ifd3-GPSLatitudeRef",
-        "exif-ifd3-GPSLongitude",
-        "exif-ifd3-GPSLongitudeRef",
-        "exif-ifd3-GPSAltitude",
-        "exif-ifd3-GPSAltitudeRef",
-        "exif-ifd3-GPSTimeStamp",
-        "exif-ifd3-GPSDateStamp",
-        "exif-ifd3-GPSSpeed",
-        "exif-ifd3-GPSSpeedRef",
-        "exif-ifd3-GPSDirection",
-        "exif-ifd3-GPSDirectionRef",
-        "exif-ifd3-GPSImgDirection",
-        "exif-ifd3-GPSImgDirectionRef",
-        "exif-ifd3-GPSMapDatum",
-        "exif-ifd3-GPSProcessingMethod",
-        "exif-ifd3-GPSAreaInformation",
-        "xmp-data",
-        "iptc-data",
-        "photoshop-data",
-        "jpeg-thumbnail-data",
-        "thumbnail-data",
-        "image-description",
-        ]
-
-        for fields in REMOVABLE_METADATA:
-            if fields in image.get_fields():
-                image.remove(fields)
-
-        output = image.write_to_buffer(
-        ".jpg",
-        Q=ratio*100,
-        optimize_coding=True,
-        strip=True,
-        subsample_mode="on"
+    # protected or name mangled methods for each filetype compression
+    def __compress_jpeg(self) -> bytes:
+        targetImage = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
+        # autorot() bakes the orientation into the image, so we don't need to worry about it later. after this we can remove the orientation metadata from the image.
+        # can we have a o(1) approach to remove metadata from the image? or we have to iterate over the metadata fields and remove them one by one?
+        # for now, we'll iterate over the metadata fields and remove them one by one.
+        for metadata_key, pattern in self.image_garbage_metadata.items():
+            for field in targetImage.get_fields():
+                if regex.match(pattern, field):
+                    targetImage.remove(field)
+        targetImage = targetImage.jpegsave_buffer(
+            Q=int(self.ratio * 100),
+            trellis_quant=True,
+            overshoot_deringing=True,
+            optimize_coding=True,
+            optimize_scans=True,
+            interlace=True,
+            subsample_mode="on"
         )
-        print(image.get_fields())
+        return targetImage
 
-        return output
+    def __compress_png(self) -> bytes:
+        pass
 
-
-    
+    def __compress_webp(self) -> bytes:
+        pass
