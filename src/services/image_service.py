@@ -59,6 +59,9 @@ class ImageService:
 
                 if filetype in ("jpg", "jpeg"):
                     return self.__compress_jpeg()
+
+                if filetype == ("png"):
+                    return self.__compress_png()
                 
                 if not callable(method):
                     raise AttributeError(f"Method {method_name} not found in {self.__class__.__name__}")
@@ -86,7 +89,32 @@ class ImageService:
         return targetImage
 
     def __compress_png(self) -> bytes:
-        pass
+        image_bytes = self.image.getvalue()
+        target_image = vips.Image.new_from_buffer(image_bytes,"",access="sequential").autorot()
+
+        for metadata_key, pattern in self.image_garbage_metadata.items():
+            for field in target_image.get_fields():
+                if regex.match(pattern, field):
+                    target_image.remove(field)
+
+        compression = round(self.ratio*9)#compression only supports value from 0 to 9 and this is compression effort
+        compressed_bytes = target_image.pngsave_buffer(compression=compression,
+        palette=True)
+
+        return compressed_bytes
+
 
     def __compress_webp(self) -> bytes:
-        pass
+        image_bytes = self.image.getvalue()
+        target_image = vips.Image.new_from_buffer(image_bytes,"",access="sequential").autorot()
+
+        for metadata_key, pattern in self.image_garbage_metadata.items():
+                    for field in target_image.get_fields():
+                        if regex.match(pattern, field):
+                            target_image = target_image.remove(field)
+
+        quality = round(self.ratio*100)
+        compressed_bytes = target_image.webpsave_buffer(Q=quality,effort=4,
+        strip=True)
+
+        return compressed_bytes
