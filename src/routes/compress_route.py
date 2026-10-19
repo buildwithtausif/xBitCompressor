@@ -8,7 +8,7 @@ compress_controller = Compress_controller()
 def compress_image():
     # getting the image from the request
     payload_image = request.files.get('image')
-    if payload_image is None or len(payload_image.read()) == 0:
+    if payload_image is None:
         return jsonify({"error": "No image provided"}), 400
     image_bytes = payload_image.read()
         

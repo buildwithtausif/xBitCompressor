@@ -2,6 +2,7 @@ signatures = {
     "png": b"\x89PNG\r\n\x1a\n",
     "jpg": b"\xff\xd8\xff",
     "jpeg": b"\xff\xd8\xff",
+    "webp": b"RIFF",
 }
 
 def is_image(image) -> tuple[str, bool]:
