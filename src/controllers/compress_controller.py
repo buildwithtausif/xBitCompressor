@@ -1,7 +1,9 @@
 from io import BytesIO
 from services.image_service import ImageService
 from flask import Response
+from faker import Faker
 
+fake = Faker()
 class Compress_controller:
     @staticmethod
     def forward(image, ratio: float | None, filetype: str = "jpeg"):
@@ -9,9 +11,10 @@ class Compress_controller:
         # convert the bytes to a BytesIO object for processing
         image_stream: BytesIO = BytesIO(image)
         image_service: ImageService = ImageService(image_stream, filetype, ratio if ratio is not None else 0.8)
-        data: bytes = image_service.compress_by_filetype
+        data: bytes = image_service.compress
+        random_name = fake.uuid4().lower().replace(" ", "-")
         return Response(
             data,
             mimetype=f"image/{filetype}",
-            headers={"Content-Disposition": f"attachment; filename=compressed.{filetype}"},
+            headers={"Content-Disposition": f"attachment; filename={random_name}.{filetype}"},
         )

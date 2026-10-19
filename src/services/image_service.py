@@ -46,39 +46,48 @@ class ImageService:
         self.image = image
         self.filetype = filetype
         self.ratio = ratio
-    # the use case of this attribute is to call the appropriate compression method based on the filetype of the image.
+    
+    # dynamically call the appropriate compression method based on the filetype of the image.
     @property
-    def compress_by_filetype(self) -> bytes:
+    def compress(self) -> bytes:
         if self.filetype not in self.supported_filetypes:
-            raise ValueError(f"Unsupported file type: {self.filetype}. Supported file types are: {', '.join(self.supported_filetypes)}")
-        # we've to call internal methods based on the filetype of the image.
-        for filetype in self.supported_filetypes:
-            if self.filetype == filetype:
-                method_name = f"_ImageService__compress_{filetype}"
-                method = getattr(self, method_name, None)
+            raise ValueError(
+                f"Unsupported file type: {self.filetype}. Supported file types are: {', '.join(self.supported_filetypes)}"
+            )
 
-                if filetype in ("jpg", "jpeg"):
-                    return self.__compress_jpeg()
+        dispatch_table = {
+            "jpeg": self.__compress_jpeg,
+            "jpg": self.__compress_jpeg,
+            "png": self.__compress_png,
+            "webp": self.__compress_webp
+        }
 
-                if filetype == ("png"):
-                    return self.__compress_png()
-                
-                if not callable(method):
-                    raise AttributeError(f"Method {method_name} not found in {self.__class__.__name__}")
-                return method()
+        method = dispatch_table.get(self.filetype.lower())
+
+        if not callable(method):
+            raise AttributeError(
+                f"compression method: {method} not found in {self.__class__.__name__}"
+            )
+        
+        return method() 
 
     # protected or name mangled methods for each filetype compression
+    def __remove_metadata(self, target_image: vips.Image):
+        for metadata_key, pattern in self.image_garbage_metadata.items():
+            for field in target_image.get_fields():
+                if regex.match(pattern, field):
+                    target_image.remove(field)
+        return target_image
+    
     def __compress_jpeg(self) -> bytes:
-        targetImage = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
+        image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
         # autorot() bakes the orientation into the image, so we don't need to worry about it later. after this we can remove the orientation metadata from the image.
         # can we have a o(1) approach to remove metadata from the image? or we have to iterate over the metadata fields and remove them one by one?
         # for now, we'll iterate over the metadata fields and remove them one by one.
-        for metadata_key, pattern in self.image_garbage_metadata.items():
-            for field in targetImage.get_fields():
-                if regex.match(pattern, field):
-                    targetImage.remove(field)
+        targetImage = self.__remove_metadata(image_buffer)
+
         targetImage = targetImage.jpegsave_buffer(
-            Q=int(self.ratio * 100),
+            Q=max(0, min(round(self.ratio * 100), 100)),
             trellis_quant=True,
             overshoot_deringing=True,
             optimize_coding=True,
@@ -89,32 +98,26 @@ class ImageService:
         return targetImage
 
     def __compress_png(self) -> bytes:
-        image_bytes = self.image.getvalue()
-        target_image = vips.Image.new_from_buffer(image_bytes,"",access="sequential").autorot()
+        image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
+        target_image = self.__remove_metadata(image_buffer)
+        
+        compressed_bytes = target_image.pngsave_buffer(
+            Q=max(0, min(round(self.ratio * 100), 100)),
+            interlace=True,
+            palette=True
+        )   
 
-        for metadata_key, pattern in self.image_garbage_metadata.items():
-            for field in target_image.get_fields():
-                if regex.match(pattern, field):
-                    target_image.remove(field)
-
-        compression = round(self.ratio*9)#compression only supports value from 0 to 9 and this is compression effort
-        compressed_bytes = target_image.pngsave_buffer(compression=compression,
-        palette=True)
-
+        # Convert the compressed bytes back to a vips.Image
         return compressed_bytes
-
 
     def __compress_webp(self) -> bytes:
-        image_bytes = self.image.getvalue()
-        target_image = vips.Image.new_from_buffer(image_bytes,"",access="sequential").autorot()
+        image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
+        target_image = self.__remove_metadata(image_buffer)
 
-        for metadata_key, pattern in self.image_garbage_metadata.items():
-                    for field in target_image.get_fields():
-                        if regex.match(pattern, field):
-                            target_image = target_image.remove(field)
+        target_image = target_image.webpsave_buffer(
+            Q=max(0, min(round(self.ratio * 100), 100)),
+            lossless=True,
+            effort=4
+        )
 
-        quality = round(self.ratio*100)
-        compressed_bytes = target_image.webpsave_buffer(Q=quality,effort=4,
-        strip=True)
-
-        return compressed_bytes
+        return target_image
