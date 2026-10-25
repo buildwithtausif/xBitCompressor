@@ -1,24 +1,3 @@
-"""
-NOTE FOR DEVELOPERS:
-for the sake of convention name your class as ImageService and the method as compress_image.
-and the above code is just a reference for you to 
-implement the compress_image method using pyvips library.
-the above code is very inefficient and will not work for large images, 
-so please make sure to implement it in a way that it can handle large images efficiently.
-
-expect:-
-Image = binary buffer stream
-Compression ratio = float between 0 and 1
-Filetype = string representing the image format (e.g., "jpeg", "png") refer to the signatures in validate_image.py for supported formats.
-
-recommendation:-
-
-implement strip for better compression.
-implement size compression as well were user enters size and image compresses accordingly
-
-error in the above code on testing:-
-Image of size 4Mb became of size > 7 Mb after compression with ratio 0.8 and filetype png.
-"""
 import pyvips as vips
 import re as regex
 
@@ -101,14 +80,14 @@ class ImageService:
         image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
         target_image = self.__remove_metadata(image_buffer)
         
-        compressed_bytes = target_image.pngsave_buffer(
+        target_image = target_image.pngsave_buffer(
             Q=max(0, min(round(self.ratio * 100), 100)),
             interlace=True,
             palette=True
         )   
 
         # Convert the compressed bytes back to a vips.Image
-        return compressed_bytes
+        return target_image
 
     def __compress_webp(self) -> bytes:
         image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
@@ -116,7 +95,7 @@ class ImageService:
 
         target_image = target_image.webpsave_buffer(
             Q=max(0, min(round(self.ratio * 100), 100)),
-            lossless=True,
+            lossless=False,
             effort=4
         )
 
