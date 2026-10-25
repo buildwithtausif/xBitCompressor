@@ -26,13 +26,23 @@ def compress_image():
              "error": "Please provide either a compression ratio or a desired size, not both"
              }), 400
     
+    if desired_size is not None and desired_size <= 0:
+        return jsonify({
+            "error": "Desired size must be greater than 0"
+        }), 400
+
     if compression_ratio is not None and (compression_ratio < 0 or compression_ratio > 1):
             return jsonify({
                 "error": "Compression ratio must be between 0 and 1"
             }), 400
     try:
         # forward the image to the compression controller
-        newImage = compress_controller.forward(image=image_bytes, ratio=compression_ratio, filetype=valid_image[1])
+        newImage = compress_controller.forward(
+             image=image_bytes, 
+             ratio=compression_ratio, 
+             desired_size=desired_size,
+             filetype=valid_image[1]
+            )
         return newImage
     except Exception as e:
         return jsonify({
