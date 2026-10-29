@@ -1,6 +1,5 @@
 import Navbar from './Navbar.jsx'
 import LandingPage from './LandingPage.jsx'
-import './App.css'
 import { useState } from 'react'
 import SettingsPage from './SettingsPage.jsx'
 import DownloadsPage from './DownloadsPage.jsx'
