@@ -39,12 +39,7 @@ export default function BatchFilmstrip({
         {items.map((item, idx) => {
           const isSelected = item.id === selectedId;
           const origFormat = getFormatLabel(item.file);
-          const isConvertedToJpeg =
-            item.compressedBlob &&
-            (item.compressedBlob.type?.includes("jpeg") || item.compressedBlob.type?.includes("jpg")) &&
-            origFormat !== "JPEG" &&
-            origFormat !== "JPG";
-          const formatLabel = isConvertedToJpeg ? "JPG" : origFormat;
+          const formatLabel = origFormat;
 
           const isSuccess = item.status === "SUCCESS";
           const isProcessing = item.status === "PROCESSING";

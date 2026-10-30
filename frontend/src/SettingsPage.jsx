@@ -31,7 +31,6 @@ function SettingsPage({
   const [desiredSize, setDesiredSize] = useState("");
   const [measure, setMeasure] = useState("KB");
   const [allowResize, setAllowResize] = useState(true);
-  const [toJpeg, setToJpeg] = useState(false);
 
   // Target size in bytes (memoized early to avoid temporal dead zone)
   const targetSizeBytes = useMemo(() => {
@@ -100,12 +99,6 @@ function SettingsPage({
     return batchItems.find((i) => i.id === selectedId) || batchItems[0] || null;
   }, [batchItems, selectedId]);
 
-  const isCurrentJpeg = useMemo(() => {
-    if (!activeItem?.file) return false;
-    const fmt = getFileFormat(activeItem.file);
-    return fmt === "jpg" || fmt === "jpeg";
-  }, [activeItem]);
-
   // Load natural dimensions for all items asynchronously if not present
   useEffect(() => {
     batchItems.forEach((item) => {
@@ -162,7 +155,7 @@ function SettingsPage({
   }, [batchItems]);
 
   // Tier 3: Active item exact server estimate (debounced 150ms)
-  const fetchActiveExactEstimate = useCallback((isRange, compValue, targetBytes, resizeAllowed, convertToJpeg, item) => {
+  const fetchActiveExactEstimate = useCallback((isRange, compValue, targetBytes, resizeAllowed, item) => {
     if (!item?.file) return;
 
     if (activeEstimateAbortRef.current) {
@@ -189,7 +182,6 @@ function SettingsPage({
           : {
               s: Math.round(targetBytes),
               allow_resize: resizeAllowed ? 1 : 0,
-              to_jpeg: convertToJpeg ? 1 : 0,
             };
 
         const resp = await axios.post(`${base_url}/estimate`, formData, {
@@ -209,12 +201,12 @@ function SettingsPage({
   useEffect(() => {
     if (activeItem) {
       setActiveItemExactBytes(null);
-      fetchActiveExactEstimate(usingRange, compression, targetSizeBytes, allowResize, toJpeg, activeItem);
+      fetchActiveExactEstimate(usingRange, compression, targetSizeBytes, allowResize, activeItem);
     }
     return () => {
       if (activeDebounceRef.current) clearTimeout(activeDebounceRef.current);
     };
-  }, [compression, activeItem, usingRange, targetSizeBytes, allowResize, toJpeg, fetchActiveExactEstimate]);
+  }, [compression, activeItem, usingRange, targetSizeBytes, allowResize, fetchActiveExactEstimate]);
 
   // Codec-aware BPP heuristic for a single item
   const calculateItemHeuristic = useCallback((item, comp) => {
@@ -320,7 +312,6 @@ function SettingsPage({
           : {
               s: Math.round(targetSizeBytes),
               allow_resize: allowResize ? 1 : 0,
-              to_jpeg: toJpeg ? 1 : 0,
             };
 
         const resp = await axios.post(`${base_url}/compress`, formData, {
@@ -892,50 +883,6 @@ function SettingsPage({
                   </div>
                 )}
 
-                {/* Convert to JPEG Permission Checkbox */}
-                <label className="flex items-start gap-2.5 p-2.5 sm:p-3 rounded-xl border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors select-none">
-                  <input
-                    type="checkbox"
-                    checked={toJpeg}
-                    onChange={(e) => {
-                      setToJpeg(e.target.checked);
-                      triggerHaptic("step");
-                    }}
-                    disabled={compressing}
-                    className="w-4 h-4 mt-0.5 rounded accent-blue-500 cursor-pointer shrink-0"
-                  />
-                  <div className="space-y-0.5 min-w-0">
-                    <span className="font-semibold text-xs text-text flex items-center gap-1.5 flex-wrap">
-                      Convert to JPEG for best compression
-                      {isCurrentJpeg && (
-                        <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10 opacity-60">
-                          Already JPEG
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-[10px] sm:text-[11px] opacity-60 leading-relaxed block">
-                      {toJpeg
-                        ? "Converts PNG/WebP to JPEG. Significantly reduces file size, but removes transparency."
-                        : `Preserves original ${getFormatLabel(activeItem?.file)} format.`}
-                    </span>
-                  </div>
-                </label>
-
-                {/* Consequence Disclosure Card (shown when checked and image is non-JPEG) */}
-                {toJpeg && !isCurrentJpeg && (
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-amber-500 text-[11px] space-y-1 animate-fadeIn">
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <span>Consequences of JPEG Conversion:</span>
-                    </div>
-                    <ul className="list-disc list-inside space-y-0.5 opacity-90 pl-1">
-                      <li>Transparent backgrounds will be filled with solid white.</li>
-                      <li>Output file format will change to <code className="font-semibold text-[10px] bg-amber-500/20 px-1 py-0.2 rounded">.jpg</code>.</li>
-                      <li>Lossless pixel fidelity will be converted to lossy DCT quantization.</li>
-                    </ul>
-                  </div>
-                )}
-
                 <p className="text-[11px] opacity-60 px-0.5 leading-relaxed">
                   Algorithm dynamically scales dimensions and adjusts encoder quality to compress under your target size.
                 </p>
@@ -1363,47 +1310,6 @@ function SettingsPage({
                         Resolution locked. Smallest achievable size at native resolution is approximately{" "}
                         <strong>{formatFileSize(activeEstimatedSize)}</strong>.
                       </span>
-                    </div>
-                  )}
-
-                  {/* Convert to JPEG Permission Checkbox */}
-                  <label className="flex items-start gap-2.5 p-2.5 rounded-xl border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors select-none">
-                    <input
-                      type="checkbox"
-                      checked={toJpeg}
-                      onChange={(e) => setToJpeg(e.target.checked)}
-                      disabled={compressing}
-                      className="w-4 h-4 mt-0.5 rounded accent-blue-500 cursor-pointer shrink-0"
-                    />
-                    <div className="space-y-0.5 min-w-0">
-                      <span className="font-semibold text-xs text-text flex items-center gap-1.5 flex-wrap">
-                        Convert to JPEG for best compression
-                        {isCurrentJpeg && (
-                          <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10 opacity-60">
-                            Already JPEG
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-[11px] opacity-60 leading-relaxed block">
-                        {toJpeg
-                          ? "Converts PNG/WebP to JPEG. Significantly reduces file size, but removes transparency."
-                          : `Preserves original ${getFormatLabel(activeItem?.file)} format.`}
-                      </span>
-                    </div>
-                  </label>
-
-                  {/* Consequence Disclosure Card (shown when checked and image is non-JPEG) */}
-                  {toJpeg && !isCurrentJpeg && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-amber-500 text-xs space-y-1 animate-fadeIn">
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                        <span>Consequences of JPEG Conversion:</span>
-                      </div>
-                      <ul className="list-disc list-inside space-y-0.5 opacity-90 pl-1 text-[11px]">
-                        <li>Transparent backgrounds will be filled with solid white.</li>
-                        <li>Output file format will change to <code className="font-semibold bg-amber-500/20 px-1 rounded">.jpg</code>.</li>
-                        <li>Lossless pixel fidelity will be converted to lossy DCT quantization.</li>
-                      </ul>
                     </div>
                   )}
 

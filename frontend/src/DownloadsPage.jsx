@@ -37,23 +37,12 @@ function DownloadsPage({ batchItems, setBatchItems, setPhase, resetBatch }) {
     };
   }, [activeItem]);
 
-  // Get output filename reflecting converted format (e.g. .jpg when converted to JPEG)
   const getOutputFilename = (item) => {
-    if (!item?.name) return "image.jpg";
-    const isJpegBlob = item.compressedBlob?.type?.includes("jpeg") || item.compressedBlob?.type?.includes("jpg");
-    if (isJpegBlob && !item.name.match(/\.(jpe?g)$/i)) {
-      return item.name.replace(/\.[^/.]+$/, "") + ".jpg";
-    }
-    return item.name;
+    return item?.name || "image.jpg";
   };
 
   const getOutputFormatLabel = (item) => {
     if (!item?.file) return "";
-    const isJpegBlob = item.compressedBlob?.type?.includes("jpeg") || item.compressedBlob?.type?.includes("jpg");
-    const origExt = getFileExtension(item.file);
-    if (isJpegBlob && origExt !== "jpg" && origExt !== "jpeg") {
-      return "JPG";
-    }
     return getFormatLabel(item.file);
   };
 
