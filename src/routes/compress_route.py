@@ -11,20 +11,26 @@ logger = logging.getLogger(__name__)
 
 def _validate_compression_params():
     """
-    Validates query parameters (ratio 'r' and desired size 's').
-    Returns (compression_ratio, desired_size, error_response).
+    Validates query parameters (ratio 'r', desired size 's', allow_resize/resize, and to_jpeg/convert_to_jpeg).
+    Returns (compression_ratio, desired_size, allow_resize, to_jpeg, error_response).
     If validation fails, error_response is a tuple (jsonify_response, status_code).
     """
     compression_ratio = request.args.get('r', type=float)
     desired_size = request.args.get('s', type=int)
 
+    resize_param = request.args.get('allow_resize', request.args.get('resize'))
+    allow_resize = resize_param.lower() in ('true', '1', 'yes') if resize_param is not None else True
+
+    to_jpeg_param = request.args.get('to_jpeg', request.args.get('convert_to_jpeg'))
+    to_jpeg = to_jpeg_param.lower() in ('true', '1', 'yes') if to_jpeg_param is not None else False
+
     if compression_ratio is not None and desired_size is not None:
-        return None, None, (jsonify({
+        return None, None, True, False, (jsonify({
             "error": "Please provide either a compression ratio or a desired size, not both"
         }), 400)
 
     if desired_size is not None and desired_size <= 0:
-        return None, None, (jsonify({
+        return None, None, True, False, (jsonify({
             "error": "Desired size must be greater than 0"
         }), 400)
 
@@ -35,11 +41,11 @@ def _validate_compression_params():
             or compression_ratio < 0
             or compression_ratio > 1
         ):
-            return None, None, (jsonify({
+            return None, None, True, False, (jsonify({
                 "error": "Compression ratio must be between 0 and 1"
             }), 400)
 
-    return compression_ratio, desired_size, None
+    return compression_ratio, desired_size, allow_resize, to_jpeg, None
 
 
 @compress_route.route('/compress', methods=['POST'])
@@ -55,7 +61,7 @@ def compress_image():
             "error": "MIME type not supported or image is corrupted"
         }), 400
 
-    compression_ratio, desired_size, error = _validate_compression_params()
+    compression_ratio, desired_size, allow_resize, to_jpeg, error = _validate_compression_params()
     if error:
         return error
 
@@ -64,7 +70,9 @@ def compress_image():
             image=image_bytes, 
             ratio=compression_ratio, 
             desired_size=desired_size,
-            filetype=valid_image[1]
+            filetype=valid_image[1],
+            allow_resize=allow_resize,
+            to_jpeg=to_jpeg
         )
         return new_image
     except Exception as e:
@@ -92,7 +100,7 @@ def estimate_size():
             "error": "MIME type not supported or image is corrupted"
         }), 400
 
-    compression_ratio, desired_size, error = _validate_compression_params()
+    compression_ratio, desired_size, allow_resize, to_jpeg, error = _validate_compression_params()
     if error:
         return error
 
@@ -101,7 +109,9 @@ def estimate_size():
             image=image_bytes,
             ratio=compression_ratio,
             desired_size=desired_size,
-            filetype=valid_image[1]
+            filetype=valid_image[1],
+            allow_resize=allow_resize,
+            to_jpeg=to_jpeg
         )
         return jsonify({"estimated_bytes": estimated_bytes})
     except Exception as e:

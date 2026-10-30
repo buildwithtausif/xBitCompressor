@@ -1,8 +1,10 @@
 import { CheckCircle2, AlertCircle, Loader2, RotateCcw, X, Clock } from "lucide-react";
-import { formatFileSize, getFormatLabel } from "./utils.js";
+import { formatFileSize, getFormatLabel, getFileExtension } from "./utils.js";
 
 function BatchItemCard({ item, isSelected, onSelect, onRetry, onRemove }) {
-  const formatLabel = getFormatLabel(item.file);
+  const origFormat = getFormatLabel(item.file);
+  const isConvertedToJpeg = item.compressedBlob && (item.compressedBlob.type?.includes("jpeg") || item.compressedBlob.type?.includes("jpg")) && origFormat !== "JPEG" && origFormat !== "JPG";
+  const formatLabel = isConvertedToJpeg ? "JPG" : origFormat;
   const isSuccess = item.status === "SUCCESS";
   const isProcessing = item.status === "PROCESSING";
   const isError = item.status === "ERROR";

@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { Download, RotateCcw, Share2, Archive, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import ImageCompareSlider from "./ImageCompareSlider.jsx";
-import { formatFileSize, getFormatLabel } from "./utils.js";
+import { formatFileSize, getFormatLabel, getFileExtension } from "./utils.js";
 import Spinner from "./Spinner.jsx";
 
 function DownloadsPage({ batchItems, setBatchItems, setPhase, resetBatch }) {
@@ -37,11 +37,31 @@ function DownloadsPage({ batchItems, setBatchItems, setPhase, resetBatch }) {
     };
   }, [activeItem]);
 
+  // Get output filename reflecting converted format (e.g. .jpg when converted to JPEG)
+  const getOutputFilename = (item) => {
+    if (!item?.name) return "image.jpg";
+    const isJpegBlob = item.compressedBlob?.type?.includes("jpeg") || item.compressedBlob?.type?.includes("jpg");
+    if (isJpegBlob && !item.name.match(/\.(jpe?g)$/i)) {
+      return item.name.replace(/\.[^/.]+$/, "") + ".jpg";
+    }
+    return item.name;
+  };
+
+  const getOutputFormatLabel = (item) => {
+    if (!item?.file) return "";
+    const isJpegBlob = item.compressedBlob?.type?.includes("jpeg") || item.compressedBlob?.type?.includes("jpg");
+    const origExt = getFileExtension(item.file);
+    if (isJpegBlob && origExt !== "jpg" && origExt !== "jpeg") {
+      return "JPG";
+    }
+    return getFormatLabel(item.file);
+  };
+
   // Web Share capability check
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.canShare && activeItem?.compressedBlob) {
       try {
-        const testFile = new File([activeItem.compressedBlob], `xbit_${activeItem.name}`, {
+        const testFile = new File([activeItem.compressedBlob], `xbit_${getOutputFilename(activeItem)}`, {
           type: activeItem.compressedBlob.type,
         });
         setCanShare(navigator.canShare({ files: [testFile] }));
@@ -73,7 +93,7 @@ function DownloadsPage({ batchItems, setBatchItems, setPhase, resetBatch }) {
   // Download Single Active File
   const downloadSingle = (item = activeItem) => {
     if (!item?.compressedBlob) return;
-    FileSaver.saveAs(item.compressedBlob, `xbit_${item.name}`);
+    FileSaver.saveAs(item.compressedBlob, `xbit_${getOutputFilename(item)}`);
   };
 
   // Download All as ZIP using JSZip
@@ -92,7 +112,7 @@ function DownloadsPage({ batchItems, setBatchItems, setPhase, resetBatch }) {
       const zip = new JSZip();
 
       successItems.forEach((item) => {
-        zip.file(`xbit_${item.name}`, item.compressedBlob);
+        zip.file(`xbit_${getOutputFilename(item)}`, item.compressedBlob);
       });
 
       const zipBlob = await zip.generateAsync({
@@ -114,7 +134,7 @@ function DownloadsPage({ batchItems, setBatchItems, setPhase, resetBatch }) {
   const handleShare = async () => {
     if (!activeItem?.compressedBlob) return;
     try {
-      const file = new File([activeItem.compressedBlob], `xbit_${activeItem.name}`, {
+      const file = new File([activeItem.compressedBlob], `xbit_${getOutputFilename(activeItem)}`, {
         type: activeItem.compressedBlob.type,
       });
       await navigator.share({
@@ -214,10 +234,10 @@ function DownloadsPage({ batchItems, setBatchItems, setPhase, resetBatch }) {
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mt-3 pt-3 border-t border-border/40 text-xs sm:text-sm">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-500">
-                  {getFormatLabel(activeItem.file)}
+                  {getOutputFormatLabel(activeItem)}
                 </span>
                 <p className="opacity-75 font-medium truncate max-w-[200px] sm:max-w-[340px]">
-                  {activeItem.name}
+                  {getOutputFilename(activeItem)}
                 </p>
               </div>
 

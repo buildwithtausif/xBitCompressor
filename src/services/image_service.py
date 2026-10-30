@@ -137,7 +137,9 @@ class CustomSize(ImageService):
         target_size: int,
         tolerance: float = 0.05,
         max_iterations: int = 6,
-        ratio: float = 0.8
+        ratio: float = 0.8,
+        allow_resize: bool = True,
+        to_jpeg: bool = False
     ):
         super().__init__(image, filetype, ratio=ratio)
         if target_size <= 0:
@@ -145,11 +147,14 @@ class CustomSize(ImageService):
         self.target_size = target_size
         self.tolerance = tolerance
         self.max_iterations = max_iterations
+        self.allow_resize = allow_resize
+        self.to_jpeg = to_jpeg
+        self.effective_filetype = "jpeg" if (to_jpeg and filetype.lower() in ("png", "webp")) else filetype.lower()
         self.calculated_scale: float = 1.0
         self.calculated_quality: int = 80
 
     def _encode_trial(self, img: vips.Image, q: int) -> bytes:
-        ft = self.filetype.lower()
+        ft = self.effective_filetype
         if ft in ("jpeg", "jpg"):
             return img.jpegsave_buffer(
                 Q=q,
@@ -174,7 +179,7 @@ class CustomSize(ImageService):
                 palette=True,
                 compression=9
             )
-        raise ValueError(f"Unsupported file type: {self.filetype}")
+        raise ValueError(f"Unsupported file type: {self.effective_filetype}")
 
     @property
     def compress(self) -> bytes:
@@ -187,36 +192,47 @@ class CustomSize(ImageService):
         image_buffer = vips.Image.new_from_buffer(raw_bytes, "").autorot()
         target_image = self._remove_metadata(image_buffer)
 
+        # If converting to JPEG and image has an alpha channel, composite over a pure white matte
+        if self.effective_filetype in ("jpeg", "jpg") and target_image.hasalpha():
+            target_image = target_image.flatten(background=[255, 255, 255])
+
         orig_w = target_image.width
         orig_h = target_image.height
         orig_pixels = orig_w * orig_h
 
-        desired_bpp = self.codec_bpp_heuristic.get(self.filetype.lower(), 0.8)
-        target_pixels = (self.target_size * 8) / desired_bpp
-
-        # If pixel budget accommodates native resolution, or if native resolution at Q=50 fits, preserve scale at 1.0
-        if target_pixels >= orig_pixels:
+        if not self.allow_resize:
+            # Strictly lock scale to 1.0 (zero dimension modifications)
             scale = 1.0
             working_image = target_image
         else:
-            buf_probe = self._encode_trial(target_image, 50)
-            if len(buf_probe) <= self.target_size:
+            desired_bpp = self.codec_bpp_heuristic.get(self.effective_filetype, 0.8)
+            target_pixels = (self.target_size * 8) / desired_bpp
+
+            # If pixel budget accommodates native resolution, or if native resolution at Q=50 fits, preserve scale at 1.0
+            if target_pixels >= orig_pixels:
                 scale = 1.0
                 working_image = target_image
             else:
-                scale = min(1.0, math.sqrt(target_pixels / orig_pixels))
-                min_dim = min(orig_w * scale, orig_h * scale)
-                if min_dim < 16:
-                    scale = max(16.0 / orig_w, 16.0 / orig_h)
-                working_image = target_image.resize(scale)
+                buf_probe = self._encode_trial(target_image, 50)
+                if len(buf_probe) <= self.target_size:
+                    scale = 1.0
+                    working_image = target_image
+                else:
+                    scale = min(1.0, math.sqrt(target_pixels / orig_pixels))
+                    min_dim = min(orig_w * scale, orig_h * scale)
+                    if min_dim < 16:
+                        scale = max(16.0 / orig_w, 16.0 / orig_h)
+                    working_image = target_image.resize(scale)
 
         best_buf: bytes | None = None
         smallest_buf: bytes | None = None
         smallest_sz = float("inf")
 
-        low_q, high_q = 15, 95
+        # When resize is locked, expand binary search range all the way down to Q=1
+        low_q, high_q = (1, 95) if not self.allow_resize else (15, 95)
+        iterations = self.max_iterations + (2 if not self.allow_resize else 0)
 
-        for _ in range(self.max_iterations):
+        for _ in range(iterations):
             mid_q = (low_q + high_q) // 2
             trial_buf = self._encode_trial(working_image, mid_q)
             sz = len(trial_buf)
@@ -234,18 +250,27 @@ class CustomSize(ImageService):
             else:
                 high_q = mid_q - 1
 
-        # Fallback if image was exceptionally complex and could not fit under target_size at Q=15
+        # Fallback if image was exceptionally complex and could not fit under target_size
         if best_buf is None and smallest_sz > self.target_size:
-            reduction = math.sqrt(self.target_size / smallest_sz) * 0.92
-            scale = max(0.01, scale * reduction)
-            working_image = target_image.resize(scale)
-            trial_buf = self._encode_trial(working_image, 35)
-            if len(trial_buf) <= self.target_size:
-                best_buf = trial_buf
-                self.calculated_quality = 35
+            if self.allow_resize:
+                reduction = math.sqrt(self.target_size / smallest_sz) * 0.92
+                scale = max(0.01, scale * reduction)
+                working_image = target_image.resize(scale)
+                trial_buf = self._encode_trial(working_image, 35)
+                if len(trial_buf) <= self.target_size:
+                    best_buf = trial_buf
+                    self.calculated_quality = 35
+                else:
+                    best_buf = self._encode_trial(working_image, 15)
+                    self.calculated_quality = 15
             else:
-                best_buf = self._encode_trial(working_image, 15)
-                self.calculated_quality = 15
+                # Ensure the absolute lowest floor at Q=1 has been tested without modifying dimensions
+                trial_buf = self._encode_trial(working_image, 1)
+                if len(trial_buf) < smallest_sz:
+                    smallest_sz = len(trial_buf)
+                    smallest_buf = trial_buf
+                best_buf = smallest_buf
+                self.calculated_quality = 1
 
         self.calculated_scale = scale
         self.ratio = self.calculated_quality / 100.0
