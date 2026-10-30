@@ -51,6 +51,24 @@ class ImageService:
         
         return method() 
 
+    def _get_buffer(self) -> bytes:
+        if isinstance(self.image, (bytes, bytearray, memoryview)):
+            return bytes(self.image) if not isinstance(self.image, bytes) else self.image
+        if hasattr(self.image, "getvalue"):
+            return self.image.getvalue()
+        if hasattr(self.image, "read"):
+            return self.image.read()
+        return bytes(self.image)
+
+    def cleanup(self):
+        """Release underlying image buffers."""
+        if hasattr(self.image, "close") and callable(self.image.close):
+            try:
+                self.image.close()
+            except Exception:
+                pass
+        self.image = None
+
     # protected methods for metadata removal and compression
     def _remove_metadata(self, target_image: vips.Image):
         for metadata_key, pattern in self.image_garbage_metadata.items():
@@ -60,14 +78,12 @@ class ImageService:
         return target_image
     
     def _compress_jpeg(self) -> bytes:
-        image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
+        image_buffer = vips.Image.new_from_buffer(self._get_buffer(), "", access="sequential").autorot()
         # autorot() bakes the orientation into the image, so we don't need to worry about it later. after this we can remove the orientation metadata from the image.
-        # can we have a o(1) approach to remove metadata from the image? or we have to iterate over the metadata fields and remove them one by one?
-        # for now, we'll iterate over the metadata fields and remove them one by one.
         targetImage = self._remove_metadata(image_buffer)
 
         targetImage = targetImage.jpegsave_buffer(
-            Q=max(0, min(round(self.ratio * 100), 100)),
+            Q=max(1, min(round(self.ratio * 100), 100)),
             trellis_quant=True,
             overshoot_deringing=True,
             optimize_coding=True,
@@ -78,11 +94,11 @@ class ImageService:
         return targetImage
 
     def _compress_png(self) -> bytes:
-        image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
+        image_buffer = vips.Image.new_from_buffer(self._get_buffer(), "", access="sequential").autorot()
         target_image = self._remove_metadata(image_buffer)
         
         target_image = target_image.pngsave_buffer(
-            Q=max(0, min(round(self.ratio * 100), 100)),
+            Q=max(1, min(round(self.ratio * 100), 100)),
             interlace=True,
             palette=True
         )   
@@ -91,11 +107,11 @@ class ImageService:
         return target_image
 
     def _compress_webp(self) -> bytes:
-        image_buffer = vips.Image.new_from_buffer(self.image.getvalue(), "", access="sequential").autorot()
+        image_buffer = vips.Image.new_from_buffer(self._get_buffer(), "", access="sequential").autorot()
         target_image = self._remove_metadata(image_buffer)
 
         target_image = target_image.webpsave_buffer(
-            Q=max(0, min(round(self.ratio * 100), 100)),
+            Q=max(1, min(round(self.ratio * 100), 100)),
             lossless=False,
             effort=4
         )
@@ -167,13 +183,7 @@ class CustomSize(ImageService):
                 f"Unsupported file type: {self.filetype}. Supported file types are: {', '.join(self.supported_filetypes)}"
             )
 
-        if hasattr(self.image, "getvalue"):
-            raw_bytes = self.image.getvalue()
-        elif isinstance(self.image, bytes):
-            raw_bytes = self.image
-        else:
-            raw_bytes = bytes(self.image)
-
+        raw_bytes = self._get_buffer()
         image_buffer = vips.Image.new_from_buffer(raw_bytes, "").autorot()
         target_image = self._remove_metadata(image_buffer)
 

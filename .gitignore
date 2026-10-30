@@ -6,3 +6,6 @@
 .env
 # ignore compiled python files
 __pycache__/
+# node modules
+frontend/node_modules/
+frontend/dist/

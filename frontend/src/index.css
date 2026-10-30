@@ -8,7 +8,20 @@
   --color-border: var(--border);
   --color-warn: var(--warn);
   --shadow-x: 0px 0px 2px 1px var(--border);
+  --animate-fadeIn: fadeIn 0.2s ease-out;
 }
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Remove increment/decrement from number inputs */
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {
@@ -19,8 +32,51 @@ input[type=number] {
   -moz-appearance: textfield;
 }
 
+/* iOS Safari auto-zoom prevention: inputs must be >= 16px */
+@media (max-width: 640px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Safe area insets for notched phones & bottom home indicators */
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.safe-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+/* Mobile-friendly slider styling: larger thumb for touch */
+input[type="range"] {
+  height: 8px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: transform 0.1s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(1.15);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
 * {
   font-family: "Inter", sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
 :root {
