@@ -6,6 +6,7 @@ import Spinner from "./Spinner.jsx";
 import { formatFileSize, getFormatLabel } from "./utils.js";
 import { BatchWorkerPool, getFileFormat } from "./utils/priorityQueue.js";
 import BatchItemCard from "./BatchItemCard.jsx";
+import BatchFilmstrip from "./BatchFilmstrip.jsx";
 import BatchProgressBar from "./BatchProgressBar.jsx";
 
 const base_url = import.meta.env.VITE_API_URL;
@@ -47,10 +48,34 @@ function SettingsPage({
   const [activeTab, setActiveTab] = useState("slider");
   const prevCompressionRef = useRef(compression);
 
-  // Compression change handler with 100% warning toast
+  // Mobile UX Advanced States
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [isHoldingOriginal, setIsHoldingOriginal] = useState(false);
+
+  // Multimodal Haptic Trigger (Web Vibration API)
+  const triggerHaptic = useCallback((pattern = "tick") => {
+    if (typeof window !== "undefined" && "vibrate" in navigator) {
+      try {
+        if (pattern === "warning") {
+          navigator.vibrate([20, 50, 20]);
+        } else if (pattern === "step") {
+          navigator.vibrate(12);
+        } else {
+          navigator.vibrate(8);
+        }
+      } catch {}
+    }
+  }, []);
+
+  // Compression change handler with 100% warning toast & haptics
   const handleCompressionChange = useCallback((newVal) => {
     const val = Number(newVal);
+    if (val % 25 === 0) {
+      triggerHaptic("step");
+    }
     if (val === 100 && prevCompressionRef.current < 100) {
+      triggerHaptic("warning");
       toast.warning(
         "Maximum Compression Warning: 100% compression aggressively quantizes color palettes and may produce heavily distorted, washed-out, or discolored images.",
         { id: "max-compression-warn", duration: 5000 }
@@ -58,7 +83,7 @@ function SettingsPage({
     }
     prevCompressionRef.current = val;
     setCompression(val);
-  }, []);
+  }, [triggerHaptic]);
 
   // Worker Pool Progress State
   const [queueProgress, setQueueProgress] = useState(null);
@@ -415,57 +440,125 @@ function SettingsPage({
       {/* ========================================================================= */}
       <div className="lg:hidden flex flex-col w-full h-full overflow-hidden">
 
-        {/* 1. Mobile Top Canvas: Fixed ~38vh, Always Visible, Zero Scroll */}
-        <div className="relative w-full h-[38vh] min-h-[220px] max-h-[300px] bg-black/5 dark:bg-white/5 border-b border-border/60 flex items-center justify-center p-3 overflow-hidden shrink-0">
-          {activeItem?.previewUrl ? (
-            <img
-              src={activeItem.previewUrl}
-              alt={activeItem.name}
-              className="w-full h-full object-contain rounded-xl select-none"
-            />
+        {/* 1. Mobile Top Canvas: Viewport-Locked, Double-Tap Zoom, Hold-to-Compare & Keyboard Avoidance */}
+        <div
+          className={`relative w-full border-b border-border/60 overflow-hidden shrink-0 transition-all duration-300 ease-out ${
+            isInputFocused
+              ? "h-12 bg-card/95 px-3 py-1 flex items-center justify-between z-20"
+              : "h-[34vh] min-h-[190px] max-h-[270px] bg-black/5 dark:bg-white/5 flex items-center justify-center p-3"
+          }`}
+        >
+          {isInputFocused ? (
+            /* Collapsed Compact Context Banner during Keyboard Input */
+            <div className="w-full flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-lg overflow-hidden bg-black/10 shrink-0 border border-border/40">
+                  <img src={activeItem?.previewUrl} alt="" className="w-full h-full object-cover" />
+                </div>
+                <div className="min-w-0 truncate">
+                  <p className="font-semibold truncate max-w-[160px] text-xs">{activeItem?.name}</p>
+                  <p className="text-[10px] opacity-60">Original: {formatFileSize(activeItem?.size)}</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (document.activeElement && typeof document.activeElement.blur === "function") {
+                    document.activeElement.blur();
+                  }
+                  setIsInputFocused(false);
+                }}
+                className="px-3 py-1 rounded-lg bg-blue-500/15 text-blue-500 font-bold text-xs shrink-0 cursor-pointer active:scale-95 transition-transform"
+              >
+                Done
+              </button>
+            </div>
           ) : (
-            <div className="text-xs opacity-50 flex items-center gap-1.5">
-              <FileImage className="w-4 h-4" /> No image selected
-            </div>
-          )}
+            /* Full Interactive Zoomable & Peekable Canvas */
+            <>
+              <div
+                onDoubleClick={() => {
+                  setIsZoomed((prev) => !prev);
+                  triggerHaptic("step");
+                }}
+                onTouchStart={() => setIsHoldingOriginal(true)}
+                onTouchEnd={() => setIsHoldingOriginal(false)}
+                onMouseDown={() => setIsHoldingOriginal(true)}
+                onMouseUp={() => setIsHoldingOriginal(false)}
+                className="w-full h-full flex items-center justify-center overflow-hidden cursor-pointer"
+              >
+                {activeItem?.previewUrl ? (
+                  <img
+                    src={activeItem.previewUrl}
+                    alt={activeItem.name}
+                    className={`max-w-full max-h-full object-contain select-none transition-transform duration-200 ${
+                      isZoomed ? "scale-[2.2] cursor-zoom-out" : "scale-100 cursor-zoom-in"
+                    }`}
+                  />
+                ) : (
+                  <div className="text-xs opacity-50 flex items-center gap-1.5">
+                    <FileImage className="w-4 h-4" /> No image selected
+                  </div>
+                )}
+              </div>
 
-          {/* Top Bar Actions on Canvas */}
-          <div className="absolute top-2.5 inset-x-3 flex items-center justify-between pointer-events-none">
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-white shadow-xs pointer-events-auto flex items-center gap-1">
-              <FileImage className="w-3 h-3 text-blue-400" />
-              {getFormatLabel(activeItem?.file)}
-              {isBatch && ` • #${batchItems.findIndex(i => i.id === selectedId) + 1} of ${batchItems.length}`}
-            </span>
-
-            <button
-              onClick={() => {
-                if (compressing) cancelBatch();
-                if (resetBatch) resetBatch();
-                else setPhase("landing");
-              }}
-              className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center shadow-xs pointer-events-auto active:scale-95 transition-transform"
-              title="Start over"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Floating Metric Pill: Anchored in User's Direct Line of Sight */}
-          <div className="absolute bottom-2 inset-x-3 flex items-center justify-between bg-black/70 backdrop-blur-md text-white px-3 py-1.5 rounded-xl shadow-md pointer-events-none text-xs">
-            <span className="font-medium truncate max-w-[50%]">
-              {activeItem?.name}
-            </span>
-            <div className="flex items-center gap-1.5 font-bold text-[11px] sm:text-xs">
-              <span className="opacity-70 line-through font-normal">{formatFileSize(activeItem?.size)}</span>
-              <span>→</span>
-              <span className="text-blue-400 font-extrabold">{formatFileSize(activeEstimatedSize)}</span>
-              {activeReductionPct > 0 && (
-                <span className="text-green-400 bg-green-500/20 px-1.5 py-0.2 rounded font-semibold text-[10px]">
-                  -{activeReductionPct}%
+              {/* Top Bar Actions on Canvas */}
+              <div className="absolute top-2.5 inset-x-3 flex items-center justify-between pointer-events-none">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-white shadow-xs pointer-events-auto flex items-center gap-1">
+                  <FileImage className="w-3 h-3 text-blue-400" />
+                  {getFormatLabel(activeItem?.file)}
+                  {isBatch && ` • #${batchItems.findIndex((i) => i.id === selectedId) + 1} of ${batchItems.length}`}
                 </span>
-              )}
-            </div>
-          </div>
+
+                <div className="flex items-center gap-1.5 pointer-events-auto">
+                  {isHoldingOriginal && (
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-500 text-white shadow-md animate-pulse">
+                      Original
+                    </span>
+                  )}
+                  {isZoomed && (
+                    <button
+                      type="button"
+                      onClick={() => setIsZoomed(false)}
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-black/60 text-white backdrop-blur-md"
+                    >
+                      Reset Zoom
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (compressing) cancelBatch();
+                      if (resetBatch) resetBatch();
+                      else setPhase("landing");
+                    }}
+                    className="w-7 h-7 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center shadow-xs active:scale-95 transition-transform"
+                    title="Start over"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Floating Metric Pill: Anchored in User's Direct Line of Sight */}
+              <div className="absolute bottom-2 inset-x-3 flex items-center justify-between bg-black/75 backdrop-blur-md text-white px-3 py-1.5 rounded-xl shadow-md pointer-events-none text-xs">
+                <span className="font-medium truncate max-w-[45%]">
+                  {activeItem?.name}
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-[11px] sm:text-xs">
+                  <span className="opacity-70 line-through font-normal">{formatFileSize(activeItem?.size)}</span>
+                  <span>→</span>
+                  <span className="text-blue-400 font-extrabold">{formatFileSize(activeEstimatedSize)}</span>
+                  {activeReductionPct > 0 && (
+                    <span className="text-green-400 bg-green-500/20 px-1.5 py-0.2 rounded font-semibold text-[10px]">
+                      -{activeReductionPct}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* 2. Mobile Batch Thumbnail Quick-Strip (shown in batch mode) */}
@@ -493,7 +586,7 @@ function SettingsPage({
 
         {/* 3. Mobile Segmented Control Dock (3 Sub-Menus) */}
         <div className="px-3 pt-2 pb-1 bg-card/40 shrink-0">
-          <div className={`grid ${isBatch ? "grid-cols-3" : "grid-cols-2"} p-0.5 rounded-xl bg-black/10 dark:bg-white/10 text-xs font-semibold`}>
+          <div className={`max-w-xl mx-auto grid ${isBatch ? "grid-cols-3" : "grid-cols-2"} p-0.5 rounded-xl bg-black/10 dark:bg-white/10 text-xs font-semibold`}>
             {/* Sub-menu 1: Compression Level (Slider) */}
             <button
               type="button"
@@ -665,24 +758,63 @@ function SettingsPage({
                   </span>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 items-center">
+                  <button
+                    type="button"
+                    disabled={compressing || !desiredSize || Number(desiredSize) <= 10}
+                    onClick={() => {
+                      const val = Math.max(1, Math.round(Number(desiredSize) * 0.9));
+                      setDesiredSize(String(val));
+                      triggerHaptic("step");
+                    }}
+                    className="w-10 h-10 rounded-xl border border-border/70 flex items-center justify-center font-bold text-xs hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-40 transition-all shrink-0 cursor-pointer"
+                    title="Reduce target size by 10%"
+                  >
+                    -10%
+                  </button>
+
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*"
                     name="desiredSize_mobile"
                     value={desiredSize}
-                    onChange={(e) => setDesiredSize(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.]/g, "");
+                      setDesiredSize(val);
+                    }}
+                    onFocus={() => setIsInputFocused(true)}
+                    onBlur={() => setIsInputFocused(false)}
                     disabled={compressing}
-                    min="0"
-                    step="any"
                     placeholder="e.g. 500"
-                    className="w-full min-w-0 border border-border/70 rounded-xl px-3 py-2.5 bg-background text-base disabled:opacity-50 transition-colors"
+                    className="w-full min-w-0 border border-border/70 rounded-xl px-3 py-2 bg-background text-base font-semibold disabled:opacity-50 transition-colors"
                   />
+
+                  <button
+                    type="button"
+                    disabled={compressing}
+                    onClick={() => {
+                      const current = Number(desiredSize) || 100;
+                      const val = Math.round(current * 1.15);
+                      setDesiredSize(String(val));
+                      triggerHaptic("step");
+                    }}
+                    className="w-10 h-10 rounded-xl border border-border/70 flex items-center justify-center font-bold text-xs hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-40 transition-all shrink-0 cursor-pointer"
+                    title="Increase target size by 15%"
+                  >
+                    +15%
+                  </button>
 
                   <select
                     value={measure}
-                    onChange={(e) => setMeasure(e.target.value)}
+                    onChange={(e) => {
+                      setMeasure(e.target.value);
+                      triggerHaptic("step");
+                    }}
+                    onFocus={() => setIsInputFocused(true)}
+                    onBlur={() => setIsInputFocused(false)}
                     disabled={compressing}
-                    className="border border-border/70 rounded-xl px-3 py-2.5 bg-background text-base font-semibold disabled:opacity-50 transition-colors shrink-0"
+                    className="border border-border/70 rounded-xl px-2.5 py-2 bg-background text-sm font-bold disabled:opacity-50 transition-colors shrink-0 cursor-pointer"
                   >
                     <option value="KB">KB</option>
                     <option value="MB">MB</option>
@@ -704,6 +836,7 @@ function SettingsPage({
                             onClick={() => {
                               setDesiredSize(String(preset.value));
                               setMeasure(preset.unit);
+                              triggerHaptic("step");
                             }}
                             className={`min-h-[40px] py-1 px-1 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95 ${
                               isMatch
@@ -727,7 +860,10 @@ function SettingsPage({
                   <input
                     type="checkbox"
                     checked={allowResize}
-                    onChange={(e) => setAllowResize(e.target.checked)}
+                    onChange={(e) => {
+                      setAllowResize(e.target.checked);
+                      triggerHaptic("step");
+                    }}
                     disabled={compressing}
                     className="w-4 h-4 mt-0.5 rounded accent-blue-500 cursor-pointer shrink-0"
                   />
@@ -761,7 +897,10 @@ function SettingsPage({
                   <input
                     type="checkbox"
                     checked={toJpeg}
-                    onChange={(e) => setToJpeg(e.target.checked)}
+                    onChange={(e) => {
+                      setToJpeg(e.target.checked);
+                      triggerHaptic("step");
+                    }}
                     disabled={compressing}
                     className="w-4 h-4 mt-0.5 rounded accent-blue-500 cursor-pointer shrink-0"
                   />
@@ -837,116 +976,232 @@ function SettingsPage({
           )}
         </div>
 
-        {/* 5. Mobile Fixed Bottom Thumb CTA */}
-        <div className="fixed bottom-0 inset-x-0 bg-background/95 backdrop-blur-md border-t border-border/60 p-3 safe-bottom z-30 shadow-lg flex gap-2">
-          <button
-            onClick={startBatchCompression}
-            disabled={compressing}
-            className="flex-1 min-h-[50px] bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60 text-white rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99] cursor-pointer"
-          >
-            {compressing ? <Spinner /> : <Zap className="w-4 h-4" />}
-            {compressing
-              ? `Compressing (${queueProgress?.completed || 0}/${batchItems.length})...`
-              : isBatch
-              ? `Compress ${batchItems.length} Images`
-              : "Compress Image"}
-          </button>
-
-          {compressing && (
+        {/* 5. Mobile Fixed Bottom Thumb CTA with Morphing Progress Bar */}
+        <div className="fixed bottom-0 inset-x-0 bg-background/95 backdrop-blur-md border-t border-border/60 p-3 safe-bottom z-30 shadow-lg">
+          <div className="max-w-xl mx-auto flex gap-2">
             <button
-              onClick={cancelBatch}
-              className="px-4 min-h-[50px] rounded-2xl border border-red-500/40 text-red-500 font-bold text-sm flex items-center justify-center cursor-pointer"
+              onClick={() => {
+                triggerHaptic("step");
+                startBatchCompression();
+              }}
+              disabled={compressing}
+              className={`relative overflow-hidden flex-1 min-h-[50px] text-white rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99] cursor-pointer ${
+                compressing ? "bg-blue-600" : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60"
+              }`}
             >
-              Cancel
+              {/* Morphing Progress Fill Bar inside the button itself */}
+              {compressing && queueProgress && (
+                <div
+                  className="absolute inset-y-0 left-0 bg-white/20 transition-all duration-300 pointer-events-none"
+                  style={{ width: `${queueProgress.percentage || 0}%` }}
+                />
+              )}
+
+              <span className="relative z-10 flex items-center gap-2">
+                {compressing ? <Spinner /> : <Zap className="w-4 h-4" />}
+                {compressing
+                  ? `Compressing ${queueProgress?.completed || 0} of ${batchItems.length} (${queueProgress?.percentage || 0}%)...`
+                  : isBatch
+                  ? `Compress ${batchItems.length} Images`
+                  : "Compress Image"}
+              </span>
             </button>
-          )}
+
+            {compressing && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("step");
+                  cancelBatch();
+                }}
+                className="px-4 min-h-[50px] rounded-2xl border border-red-500/40 text-red-500 font-bold text-sm flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
         </div>
 
       </div>
 
       {/* ========================================================================= */}
-      {/* DESKTOP TWO-COLUMN MASTER-DETAIL LAYOUT (hidden on mobile, shown on lg)   */}
+      {/* DESKTOP & TABLET STUDIO LAYOUT (>= lg)                                     */}
+      {/* Left: Studio Stage Canvas + Dedicated Horizontal Batch Filmstrip           */}
+      {/* Right: Fixed 3-Tier Inspector with Permanently Anchored Sticky CTA         */}
       {/* ========================================================================= */}
-      <div className="hidden lg:flex w-full h-full gap-6">
+      <div className="hidden lg:flex w-full h-full gap-5 xl:gap-6 min-h-0 overflow-hidden">
 
-        {/* Left Column: Settings, Estimation & Queue List */}
-        <div className="w-2/5 flex flex-col h-full">
-          <div className="bg-card border border-border/70 rounded-2xl p-6 w-full flex flex-col flex-1 shadow-xs overflow-y-auto">
+        {/* Left Column: Studio Stage (Preview Canvas + Batch Filmstrip) */}
+        <div className="flex-1 min-w-0 flex flex-col h-full gap-3.5">
 
-            {/* Header */}
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-blue-500" />
-                <h2 className="text-2xl font-bold tracking-tight">
-                  {isBatch ? "Batch Settings" : "Compression Settings"}
+          {/* Main Inspection Canvas Card */}
+          <div className="bg-card border border-border/70 rounded-2xl p-5 w-full flex flex-col flex-1 shadow-xs min-h-0 overflow-hidden">
+            {/* Stage Header */}
+            <div className="flex items-center justify-between mb-3 shrink-0">
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold tracking-tight truncate">
+                  {isBatch ? "Selected Image Preview" : "Original Image"}
                 </h2>
+                {isBatch && (
+                  <p className="text-xs opacity-60">
+                    Viewing item #{batchItems.findIndex((i) => i.id === selectedId) + 1} of {batchItems.length}
+                  </p>
+                )}
               </div>
-              {isBatch && (
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                  {batchItems.length} Images
-                </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (compressing) cancelBatch();
+                  if (resetBatch) resetBatch();
+                  else setPhase("landing");
+                }}
+                className="border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer shrink-0"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Start Over
+              </button>
+            </div>
+
+            {/* High-Fidelity Stage Viewport */}
+            <div className="flex-1 min-h-0 flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-2xl p-4 overflow-hidden relative group">
+              {activeItem?.previewUrl ? (
+                <img
+                  src={activeItem.previewUrl}
+                  alt={activeItem.name}
+                  className="max-w-full max-h-full object-contain rounded-xl shadow-xs transition-transform duration-200"
+                />
+              ) : (
+                <p className="text-sm opacity-50">No image selected</p>
+              )}
+
+              {/* In-canvas format pill overlay */}
+              {activeItem && (
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg text-white text-[11px] font-semibold pointer-events-none shadow-sm">
+                  <span className="uppercase">{getFormatLabel(activeItem.file)}</span>
+                  {activeItem.dimensions && (
+                    <span>• {activeItem.dimensions.width}×{activeItem.dimensions.height}</span>
+                  )}
+                </div>
               )}
             </div>
 
-            {/* Progress Bar when active */}
-            {compressing && queueProgress && (
-              <BatchProgressBar
-                progress={queueProgress}
-                onCancelAll={cancelBatch}
-                isProcessing={compressing}
-              />
+            {/* Stage Bottom Metadata Bar */}
+            {activeItem && (
+              <div className="flex justify-between items-center mt-3 pt-3 border-t border-border/40 text-xs sm:text-sm gap-3 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-500">
+                    {getFormatLabel(activeItem.file)}
+                  </span>
+                  <p className="truncate opacity-75 font-medium max-w-[280px] xl:max-w-[360px]" title={activeItem.name}>
+                    {activeItem.name}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0 opacity-70 font-medium text-xs">
+                  <span>Original: {formatFileSize(activeItem.size)}</span>
+                  <span className="text-blue-500 font-bold">
+                    Est: ~{formatFileSize(activeEstimatedSize)}
+                  </span>
+                </div>
+              </div>
             )}
+          </div>
 
-            {/* Desktop Segmented Mode Switcher */}
-            <div className="grid grid-cols-2 p-1 rounded-xl bg-black/5 dark:bg-white/5 text-sm font-semibold mb-5">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("slider");
-                  setUsingRange(true);
-                }}
-                className={`py-2 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  usingRange
-                    ? "bg-background text-text shadow-xs"
-                    : "opacity-70 hover:opacity-100"
-                }`}
-              >
-                <Sliders className="w-4 h-4 text-blue-500" />
-                <span>Compression Level</span>
-              </button>
+          {/* Dedicated Studio Filmstrip (rendered when more than 1 image in batch) */}
+          {isBatch && (
+            <BatchFilmstrip
+              items={batchItems}
+              selectedId={selectedId}
+              onSelect={handleSelectActiveItem}
+              onRemove={handleRemoveItem}
+              onRetry={handleRetryItem}
+              compressing={compressing}
+            />
+          )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("target");
-                  setUsingRange(false);
-                }}
-                className={`py-2 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  !usingRange
-                    ? "bg-background text-text shadow-xs"
-                    : "opacity-70 hover:opacity-100"
-                }`}
-              >
-                <Target className="w-4 h-4 text-blue-500" />
-                <span>Target File Size</span>
-              </button>
+        </div>
+
+        {/* Right Column: Dedicated 3-Tier Inspector Panel */}
+        <div className="w-[360px] xl:w-[410px] flex flex-col h-full shrink-0">
+          <div className="bg-card border border-border/70 rounded-2xl flex flex-col h-full shadow-xs overflow-hidden">
+
+            {/* TIER 1: Fixed Header (Mode Switcher + Title) */}
+            <div className="p-5 pb-3.5 border-b border-border/40 shrink-0 space-y-3.5 bg-card">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-blue-500" />
+                  <h2 className="text-xl font-bold tracking-tight">
+                    {isBatch ? "Batch Settings" : "Compression Settings"}
+                  </h2>
+                </div>
+                {isBatch && (
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                    {batchItems.length} Images
+                  </span>
+                )}
+              </div>
+
+              {/* Progress Bar when active */}
+              {compressing && queueProgress && (
+                <BatchProgressBar
+                  progress={queueProgress}
+                  onCancelAll={cancelBatch}
+                  isProcessing={compressing}
+                />
+              )}
+
+              {/* Desktop Segmented Mode Switcher */}
+              <div className="grid grid-cols-2 p-1 rounded-xl bg-black/5 dark:bg-white/5 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("slider");
+                    setUsingRange(true);
+                  }}
+                  className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    usingRange
+                      ? "bg-background text-text shadow-xs"
+                      : "opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Compression</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("target");
+                    setUsingRange(false);
+                  }}
+                  className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    !usingRange
+                      ? "bg-background text-text shadow-xs"
+                      : "opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <Target className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Target Size</span>
+                </button>
+              </div>
             </div>
 
-            {/* Desktop Controls Surface */}
-            <div className="space-y-5">
+            {/* TIER 2: Scrollable Controls Surface */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 no-scrollbar">
               {usingRange ? (
                 /* Mode 1: Compression Slider */
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold text-base">
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm">
                       {isBatch ? "Batch Compression Level" : "Compression Level"}
                     </span>
-                    <span className={`font-bold text-lg ${compression === 100 ? "text-amber-500" : "text-blue-500"}`}>
+                    <span className={`font-bold text-base ${compression === 100 ? "text-amber-500" : "text-blue-500"}`}>
                       {compression}%
                     </span>
                   </div>
 
-                  <div className="py-2">
+                  <div className="py-1">
                     <input
                       type="range"
                       min="10"
@@ -959,12 +1214,12 @@ function SettingsPage({
                     />
                   </div>
 
-                  <div className="flex justify-between text-xs opacity-50 font-medium px-0.5">
+                  <div className="flex justify-between text-[11px] opacity-50 font-medium px-0.5">
                     <span>Low (10%)</span>
                     <span className={compression === 100 ? "text-amber-500 font-bold" : ""}>Max (100%)</span>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2 mt-3">
+                  <div className="grid grid-cols-4 gap-1.5 pt-1">
                     {PRESET_CHIPS.map((chip) => {
                       const isActive = compression === chip.value;
                       const isMax = chip.value === 100;
@@ -975,7 +1230,7 @@ function SettingsPage({
                           disabled={compressing}
                           onClick={() => handleCompressionChange(chip.value)}
                           title={isMax ? "Warning: 100% compression aggressively degrades quality and manipulates colors" : undefined}
-                          className={`min-h-[38px] py-1 px-2 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95 ${
+                          className={`min-h-[38px] py-1 px-1.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95 ${
                             isActive
                               ? isMax
                                 ? "bg-amber-500 text-white shadow-xs"
@@ -999,7 +1254,7 @@ function SettingsPage({
 
                   {/* Amber Warning Card when 100% is selected on Desktop */}
                   {compression === 100 && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5 text-amber-500 text-xs mt-3 animate-fadeIn">
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5 text-amber-500 text-xs animate-fadeIn">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                       <div className="space-y-0.5">
                         <p className="font-bold">Heavy Quality & Color Degradation</p>
@@ -1014,8 +1269,8 @@ function SettingsPage({
                 /* Mode 2: Target Size Input */
                 <div className="space-y-3.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-base">Target File Size</span>
-                    <span className="text-xs opacity-60">
+                    <span className="font-semibold text-sm">Target File Size</span>
+                    <span className="text-[11px] opacity-60">
                       Original: {formatFileSize(activeItem?.size || 0)}
                     </span>
                   </div>
@@ -1030,14 +1285,14 @@ function SettingsPage({
                       min="0"
                       step="any"
                       placeholder="e.g. 500"
-                      className="w-full min-w-0 border border-border/70 rounded-xl px-3.5 py-2.5 bg-background text-sm disabled:opacity-50 transition-colors"
+                      className="w-full min-w-0 border border-border/70 rounded-xl px-3 py-2 bg-background text-sm disabled:opacity-50 transition-colors"
                     />
 
                     <select
                       value={measure}
                       onChange={(e) => setMeasure(e.target.value)}
                       disabled={compressing}
-                      className="border border-border/70 rounded-xl px-3.5 py-2.5 bg-background text-sm font-medium disabled:opacity-50 transition-colors shrink-0"
+                      className="border border-border/70 rounded-xl px-3 py-2 bg-background text-sm font-semibold disabled:opacity-50 transition-colors shrink-0"
                     >
                       <option value="KB">KB</option>
                       <option value="MB">MB</option>
@@ -1046,9 +1301,9 @@ function SettingsPage({
 
                   {/* Smart Quick Target Presets for Desktop */}
                   {smartTargetPresets.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-xs font-semibold opacity-60 px-0.5">Quick Target Suggestions:</span>
-                      <div className="grid grid-cols-4 gap-2">
+                    <div className="space-y-1.5 pt-0.5">
+                      <span className="text-[11px] font-semibold opacity-60 px-0.5">Quick Target Suggestions:</span>
+                      <div className="grid grid-cols-4 gap-1.5">
                         {smartTargetPresets.map((preset, idx) => {
                           const isMatch = desiredSize === String(preset.value) && measure === preset.unit;
                           return (
@@ -1060,7 +1315,7 @@ function SettingsPage({
                                 setDesiredSize(String(preset.value));
                                 setMeasure(preset.unit);
                               }}
-                              className={`min-h-[40px] py-1 px-2 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95 ${
+                              className={`min-h-[38px] py-1 px-1 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95 ${
                                 isMatch
                                   ? "bg-blue-500 text-white shadow-xs"
                                   : "border border-border/60 hover:bg-black/5 dark:hover:bg-white/5 opacity-80"
@@ -1078,7 +1333,7 @@ function SettingsPage({
                   )}
 
                   {/* Resolution / Downscaling Permission Checkbox */}
-                  <label className="flex items-start gap-3 p-3 rounded-xl border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors select-none">
+                  <label className="flex items-start gap-2.5 p-2.5 rounded-xl border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors select-none">
                     <input
                       type="checkbox"
                       checked={allowResize}
@@ -1087,10 +1342,10 @@ function SettingsPage({
                       className="w-4 h-4 mt-0.5 rounded accent-blue-500 cursor-pointer shrink-0"
                     />
                     <div className="space-y-0.5 min-w-0">
-                      <span className="font-semibold text-sm text-text block">
+                      <span className="font-semibold text-xs text-text block">
                         Allow dimension downscaling (Width × Height)
                       </span>
-                      <span className="text-xs opacity-60 leading-relaxed block">
+                      <span className="text-[11px] opacity-60 leading-relaxed block">
                         {allowResize
                           ? "Dimensions may be reduced if needed to hit your exact target size."
                           : activeItem?.dimensions
@@ -1102,7 +1357,7 @@ function SettingsPage({
 
                   {/* Warning notice if resolution is locked and target size is smaller than lowest floor */}
                   {!allowResize && activeEstimatedSize > targetSizeBytes && targetSizeBytes > 0 && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5 text-amber-500 text-xs animate-fadeIn">
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-start gap-2 text-amber-500 text-xs animate-fadeIn">
                       <Info className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>
                         Resolution locked. Smallest achievable size at native resolution is approximately{" "}
@@ -1112,7 +1367,7 @@ function SettingsPage({
                   )}
 
                   {/* Convert to JPEG Permission Checkbox */}
-                  <label className="flex items-start gap-3 p-3 rounded-xl border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors select-none">
+                  <label className="flex items-start gap-2.5 p-2.5 rounded-xl border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors select-none">
                     <input
                       type="checkbox"
                       checked={toJpeg}
@@ -1121,15 +1376,15 @@ function SettingsPage({
                       className="w-4 h-4 mt-0.5 rounded accent-blue-500 cursor-pointer shrink-0"
                     />
                     <div className="space-y-0.5 min-w-0">
-                      <span className="font-semibold text-sm text-text flex items-center gap-2">
+                      <span className="font-semibold text-xs text-text flex items-center gap-1.5 flex-wrap">
                         Convert to JPEG for best compression
                         {isCurrentJpeg && (
-                          <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 opacity-60">
+                          <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10 opacity-60">
                             Already JPEG
                           </span>
                         )}
                       </span>
-                      <span className="text-xs opacity-60 leading-relaxed block">
+                      <span className="text-[11px] opacity-60 leading-relaxed block">
                         {toJpeg
                           ? "Converts PNG/WebP to JPEG. Significantly reduces file size, but removes transparency."
                           : `Preserves original ${getFormatLabel(activeItem?.file)} format.`}
@@ -1139,170 +1394,78 @@ function SettingsPage({
 
                   {/* Consequence Disclosure Card (shown when checked and image is non-JPEG) */}
                   {toJpeg && !isCurrentJpeg && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-amber-500 text-xs space-y-1.5 animate-fadeIn">
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-amber-500 text-xs space-y-1 animate-fadeIn">
                       <div className="flex items-center gap-1.5 font-bold">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                         <span>Consequences of JPEG Conversion:</span>
                       </div>
-                      <ul className="list-disc list-inside space-y-0.5 opacity-90 pl-1">
+                      <ul className="list-disc list-inside space-y-0.5 opacity-90 pl-1 text-[11px]">
                         <li>Transparent backgrounds will be filled with solid white.</li>
-                        <li>Output file format will change to <code className="font-semibold bg-amber-500/20 px-1 py-0.2 rounded">.jpg</code>.</li>
+                        <li>Output file format will change to <code className="font-semibold bg-amber-500/20 px-1 rounded">.jpg</code>.</li>
                         <li>Lossless pixel fidelity will be converted to lossy DCT quantization.</li>
                       </ul>
                     </div>
                   )}
 
-                  <p className="text-xs opacity-60 leading-relaxed">
+                  <p className="text-[11px] opacity-55 leading-relaxed">
                     Algorithm dynamically calculates dimension scaling and quality factor to fit under your desired threshold.
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Estimation Info Box */}
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 mt-5 mb-4">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Info className="w-4 h-4 text-blue-500 shrink-0" />
-                <p className="text-sm font-semibold">
-                  {isBatch ? "Estimated Total Batch Output" : "Predicted Output Size"}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-sm opacity-50 line-through">
-                  {formatFileSize(totalOriginalBytes)}
-                </p>
-                <span className="opacity-40 text-sm">→</span>
-                <p className="text-xl font-bold text-blue-500">
-                  {formatFileSize(totalEstimatedBytes)}
-                </p>
-              </div>
-
-              <p className="text-[11px] opacity-65 mt-1">
-                {isBatch
-                  ? `Predicting across ${batchItems.length} items with PyVips BPP calibration.`
-                  : "Calibrated to PyVips engine."}
-              </p>
-            </div>
-
-            {/* Batch Queue Section */}
-            {isBatch && (
-              <div className="flex-1 min-h-0 flex flex-col mt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider opacity-60">
-                    Batch Queue ({batchItems.length})
-                  </span>
-                  <span className="text-[11px] opacity-50">
-                    Tap to preview
-                  </span>
+            {/* TIER 3: Fixed Sticky Action Anchor (Estimation Box + Primary CTA) */}
+            <div className="p-4 border-t border-border/40 bg-card/95 backdrop-blur-sm shrink-0 space-y-3">
+              {/* Estimation Info Box */}
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5 text-blue-500">
+                    <Info className="w-3.5 h-3.5 shrink-0" />
+                    <span className="text-xs font-semibold">
+                      {isBatch ? "Estimated Total Batch" : "Predicted Output"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] opacity-60 font-mono">PyVips BPP</span>
                 </div>
 
-                <div className="space-y-2 overflow-y-auto max-h-[220px] pr-1">
-                  {batchItems.map((item) => (
-                    <BatchItemCard
-                      key={item.id}
-                      item={item}
-                      isSelected={item.id === selectedId}
-                      onSelect={() => handleSelectActiveItem(item.id)}
-                      onRetry={handleRetryItem}
-                      onRemove={handleRemoveItem}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Desktop Action Buttons */}
-            <div className="flex gap-3 mt-auto pt-4 border-t border-border/30">
-              <button
-                onClick={startBatchCompression}
-                disabled={compressing}
-                className="flex-1 min-h-[48px] bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer shadow-xs"
-              >
-                {compressing ? <Spinner /> : <Zap className="w-4 h-4" />}
-                {compressing
-                  ? `Compressing ${queueProgress?.completed || 0}/${batchItems.length}...`
-                  : isBatch
-                  ? `Compress ${batchItems.length} Images`
-                  : "Compress Image"}
-              </button>
-
-              {compressing && (
-                <button
-                  onClick={cancelBatch}
-                  className="px-4 py-3 rounded-xl border border-red-500/40 text-red-500 hover:bg-red-500/10 font-medium text-sm transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-
-          </div>
-        </div>
-
-        {/* Right Column: Full Master Image Preview */}
-        <div className="w-3/5 flex flex-col h-full">
-          <div className="bg-card border border-border/70 rounded-2xl p-6 w-full flex flex-col flex-1 shadow-xs">
-
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight">
-                  {isBatch ? "Selected Image Preview" : "Original Image"}
-                </h2>
-                {isBatch && (
-                  <p className="text-xs opacity-60">
-                    Viewing #{batchItems.findIndex((i) => i.id === selectedId) + 1} of {batchItems.length}
+                <div className="flex items-center gap-2">
+                  <p className="text-xs opacity-50 line-through">
+                    {formatFileSize(totalOriginalBytes)}
                   </p>
+                  <span className="opacity-40 text-xs">→</span>
+                  <p className="text-lg font-bold text-blue-500">
+                    {formatFileSize(totalEstimatedBytes)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Desktop Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={startBatchCompression}
+                  disabled={compressing}
+                  className="flex-1 min-h-[46px] bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer shadow-xs"
+                >
+                  {compressing ? <Spinner /> : <Zap className="w-4 h-4" />}
+                  {compressing
+                    ? `Compressing ${queueProgress?.completed || 0}/${batchItems.length}...`
+                    : isBatch
+                    ? `Compress ${batchItems.length} Images`
+                    : "Compress Image"}
+                </button>
+
+                {compressing && (
+                  <button
+                    type="button"
+                    onClick={cancelBatch}
+                    className="px-3 min-h-[46px] rounded-xl border border-red-500/40 text-red-500 hover:bg-red-500/10 font-medium text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
                 )}
               </div>
-
-              <button
-                onClick={() => {
-                  if (compressing) cancelBatch();
-                  if (resetBatch) resetBatch();
-                  else setPhase("landing");
-                }}
-                className="border border-border/70 hover:bg-black/5 dark:hover:bg-white/5 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-sm font-medium transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Start Over
-              </button>
             </div>
-
-            <div className="flex-1 min-h-0 flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-2xl p-4 overflow-hidden">
-              {activeItem?.previewUrl ? (
-                <img
-                  src={activeItem.previewUrl}
-                  alt={activeItem.name}
-                  className="max-w-full max-h-[55vh] object-contain rounded-xl shadow-xs"
-                />
-              ) : (
-                <p className="text-sm opacity-50">No image selected</p>
-              )}
-            </div>
-
-            {activeItem && (
-              <div className="flex justify-between items-center mt-3 pt-3 border-t border-border/40 text-sm gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-500">
-                    {getFormatLabel(activeItem.file)}
-                  </span>
-                  <p className="truncate opacity-75 font-medium max-w-[340px]">
-                    {activeItem.name}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0 opacity-60 font-medium">
-                  {activeItem.dimensions && (
-                    <span>{activeItem.dimensions.width} × {activeItem.dimensions.height}</span>
-                  )}
-                  <span>Original: {formatFileSize(activeItem.size)}</span>
-                  <span className="text-blue-500 font-semibold">
-                    Est: ~{formatFileSize(activeEstimatedSize)}
-                  </span>
-                </div>
-              </div>
-            )}
 
           </div>
         </div>
