@@ -9,3 +9,9 @@ __pycache__/
 # node modules
 frontend/node_modules/
 frontend/dist/
+# documentation & diagram exports
+docs/
+# ignore document makers
+build_full_document.py
+generate_diagrams.py
+SRS_and_implementation_Analysis_Report.docx
