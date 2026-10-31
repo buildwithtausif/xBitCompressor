@@ -82,9 +82,10 @@ class ImageService:
 
     def cleanup(self) -> None:
         """Release underlying image buffers."""
-        if hasattr(self.image, "close") and callable(getattr(self.image, "close", None)):
+        close_method = getattr(self.image, "close", None)
+        if callable(close_method):
             try:
-                self.image.close()
+                close_method()
             except Exception:
                 pass
         self.image = None
