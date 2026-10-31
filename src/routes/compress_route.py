@@ -54,6 +54,7 @@ def compress_image():
         
     valid_image = exception_handler.handle_invalid_image(image_bytes)
     if not valid_image:
+        del image_bytes
         return jsonify({
             "error": "MIME type not supported or image is corrupted"
         }), 400
@@ -92,6 +93,7 @@ def estimate_size():
 
     valid_image = exception_handler.handle_invalid_image(image_bytes)
     if not valid_image:
+        del image_bytes
         return jsonify({
             "error": "MIME type not supported or image is corrupted"
         }), 400

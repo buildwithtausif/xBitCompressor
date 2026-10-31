@@ -101,6 +101,8 @@ function SettingsPage({
 
   // Load natural dimensions for all items asynchronously if not present
   useEffect(() => {
+    const images = [];
+
     batchItems.forEach((item) => {
       if (!item.dimensions && item.previewUrl) {
         const img = new Image();
@@ -114,8 +116,17 @@ function SettingsPage({
           );
         };
         img.src = item.previewUrl;
+        images.push(img);
       }
     });
+
+    return () => {
+      // Cleanup: abort loading and release references
+      images.forEach((img) => {
+        img.onload = null;
+        img.src = "";
+      });
+    };
   }, [batchItems, setBatchItems]);
 
   // Tier 2: Sampled Anchor Calibration (Probe largest file once at Q=50)
@@ -359,6 +370,7 @@ function SettingsPage({
         setQueueProgress(p);
       },
       onComplete: (finalItems) => {
+        poolRef.current = null;  // Release pool and its internal item copies
         setCompressing(false);
         const successCount = finalItems.filter((i) => i.status === "SUCCESS").length;
         if (successCount > 0) {
@@ -382,6 +394,16 @@ function SettingsPage({
     setCompressing(false);
     toast.info("Batch compression cancelled.");
   };
+
+  // Cleanup pool on unmount to release internal item copies
+  useEffect(() => {
+    return () => {
+      if (poolRef.current) {
+        poolRef.current.cancelAll();
+        poolRef.current = null;
+      }
+    };
+  }, []);
 
   const handleRetryItem = (id) => {
     if (poolRef.current) {

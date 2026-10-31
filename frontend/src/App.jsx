@@ -21,6 +21,8 @@ function App() {
       if (item.previewUrl) {
         URL.revokeObjectURL(item.previewUrl);
       }
+      // Release compressed blob reference
+      item.compressedBlob = null;
     });
     setBatchItems([]);
     setPhase(phases.LANDING);

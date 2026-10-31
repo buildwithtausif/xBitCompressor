@@ -26,6 +26,7 @@ function ImageCompareSlider({ originalSrc, compressedSrc }) {
     const img = new Image();
     img.onload = () => setOrigDims({ w: img.naturalWidth, h: img.naturalHeight });
     img.src = originalSrc;
+    return () => { img.onload = null; img.src = ""; };
   }, [originalSrc]);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ function ImageCompareSlider({ originalSrc, compressedSrc }) {
     const img = new Image();
     img.onload = () => setCompDims({ w: img.naturalWidth, h: img.naturalHeight });
     img.src = compressedSrc;
+    return () => { img.onload = null; img.src = ""; };
   }, [compressedSrc]);
 
   // Track container width so the clipped image stays pinned to full width
